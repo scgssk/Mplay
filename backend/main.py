@@ -271,6 +271,10 @@ async def stream(
     # Build headers for proxying
     proxy_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://www.youtube.com",
+        "Referer": f"https://www.youtube.com/watch?v={video_id}",
     }
 
     # Forward Range header if present
@@ -279,7 +283,7 @@ async def stream(
         proxy_headers["Range"] = range_header
 
     try:
-        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0))
+        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=10.0), follow_redirects=True)
         upstream = await client.send(
             client.build_request("GET", audio_url, headers=proxy_headers),
             stream=True,
