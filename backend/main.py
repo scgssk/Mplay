@@ -74,18 +74,13 @@ def _ytdlp_search(query: str, limit: int) -> list[dict]:
     import yt_dlp
 
     ydl_opts = {
-    "quiet": True,
-    "no_warnings": True,
-    "format": "bestaudio[abr<=128]/bestaudio",
-    "skip_download": True,
-    "ignoreerrors": False,
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android"],   # use Android client
-            "skip": ["hls", "dash"],        # skip HLS/DASH formats
-        }
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        "skip_download": True,
+        "default_search": f"ytsearch{limit}",
+        "ignoreerrors": True,
     }
-}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         result = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
 
