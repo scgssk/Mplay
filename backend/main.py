@@ -124,9 +124,10 @@ def _ytdlp_search(query: str, limit: int) -> list[dict]:
 
 
 def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
-    """Extract the direct audio URL for a given video_id."""
+    """Extract the direct audio URL with fallback if format is unavailable."""
     import yt_dlp
 
+    # Quality-specific format selectors
     format_map = {
         "low": "bestaudio[abr<=96]/bestaudio",
         "medium": "bestaudio[abr<=128]/bestaudio",
@@ -140,30 +141,55 @@ def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
         "format": fmt,
         "skip_download": True,
         "ignoreerrors": False,
-        "cookiefile": COOKIES_FILE,  
+        "cookiefile": COOKIES_FILE,   # from environment
     }
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+    try:
+        # Attempt with the requested format selector
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as e:
+        # If the format isn't available, fall back to generic bestaudio
+        if "Requested format is not available" in str(e):
+            ydl_opts["format"] = "bestaudio"
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        else:
+            raise
 
     if not info:
         raise ValueError("Could not extract audio info")
 
+    # Attempt to get the direct audio URL
     audio_url = info.get("url")
     if not audio_url:
-        # Try to find in requested_formats or formats
+        # If not present, search through all available formats
         formats = info.get("requested_formats") or info.get("formats") or []
-        for f in reversed(formats):
-            if f.get("acodec") and f["acodec"] != "none" and f.get("url"):
-                audio_url = f["url"]
-                break
+        # Keep only audio‑only formats with a URL
+        audio_formats = [
+            f for f in formats
+            if f.get("acodec") and f["acodec"] != "none" and f.get("url")
+        ]
+        if audio_formats:
+            # Choose the one with highest bitrate (abr or tbr)
+            audio_formats.sort(
+                key=lambda f: (f.get("abr") or f.get("tbr") or 0),
+                reverse=True
+            )
+            audio_url = audio_formats[0]["url"]
+        else:
+            # Last resort: any format with a URL
+            for f in formats:
+                if f.get("url"):
+                    audio_url = f["url"]
+                    break
 
     if not audio_url:
         raise ValueError("No audio URL found")
 
-    # Determine content type
+    # Determine content type from file extension
     ext = info.get("ext", "webm")
     content_type_map = {
         "webm": "audio/webm",
@@ -180,8 +206,7 @@ def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
         "content_type": content_type,
         "filesize": filesize,
     }
-
-
+  
 def _format_views(count: int | None) -> str:
     """Format view count to human-readable string."""
     if not count:
