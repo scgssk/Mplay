@@ -122,39 +122,55 @@ def _ytdlp_search(query: str, limit: int) -> list[dict]:
 
     return tracks
   
-def _ytdlp_extract_audio(video_id: str, quality: str):
+def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
     import yt_dlp
 
     ydl_opts = {
-        "quiet": False,
-        "verbose": True,
+        "quiet": True,
         "skip_download": True,
-        "ignoreerrors": False,
         "cookiefile": COOKIES_FILE,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android"]
+            }
+        }
     }
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    print("=" * 60)
-    print("Extracting:", url)
-
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
 
-    print("Extraction succeeded")
+    formats = info.get("formats", [])
 
-    print("Formats:", len(info["formats"]))
-
-    for f in info["formats"]:
-        print(
-            f.get("format_id"),
-            f.get("ext"),
-            f.get("acodec"),
-            f.get("vcodec"),
-            f.get("abr")
+    audio_formats = [
+        f for f in formats
+        if (
+            f.get("acodec") not in (None, "none")
+            and f.get("url")
         )
+    ]
 
-    return {}
+    if not audio_formats:
+        raise ValueError("No audio formats available")
+
+    if quality == "low":
+        target = 64
+    elif quality == "medium":
+        target = 128
+    else:
+        target = 10000
+
+    best = min(
+        audio_formats,
+        key=lambda f: abs((f.get("abr") or f.get("tbr") or 128) - target)
+    )
+
+    return {
+        "url": best["url"],
+        "content_type": best.get("mime_type", "audio/webm").split(";")[0],
+        "filesize": best.get("filesize") or best.get("filesize_approx"),
+    }
   
 def _format_views(count: int | None) -> str:
     """Format view count to human-readable string."""
