@@ -121,97 +121,40 @@ def _ytdlp_search(query: str, limit: int) -> list[dict]:
         })
 
     return tracks
-
-
-def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
-    """Extract the direct audio URL by manually choosing the best audio format."""
+  
+def _ytdlp_extract_audio(video_id: str, quality: str):
     import yt_dlp
 
-    # We don't use "format" – we'll parse the formats list ourselves.
     ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
+        "quiet": False,
+        "verbose": True,
         "skip_download": True,
         "ignoreerrors": False,
-        "cookiefile": COOKIES_FILE,   # from environment
-        # Do NOT set "format"
+        "cookiefile": COOKIES_FILE,
     }
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
+    print("=" * 60)
+    print("Extracting:", url)
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
 
-    if not info:
-        raise ValueError("Could not extract video info")
+    print("Extraction succeeded")
 
-    # Get all formats; 'requested_formats' may be present, but we want the full list.
-    formats = info.get("formats") or []
-    if not formats:
-        # Sometimes formats are nested under 'requested_formats' when using format selection,
-        # but we didn't use format, so they should be in 'formats'.
-        raise ValueError("No formats found for this video")
+    print("Formats:", len(info["formats"]))
 
-    # Filter for audio-only formats (acodec != 'none' and has a URL)
-    audio_formats = [
-        f for f in formats
-        if f.get("acodec") and f["acodec"] != "none" and f.get("url")
-    ]
+    for f in info["formats"]:
+        print(
+            f.get("format_id"),
+            f.get("ext"),
+            f.get("acodec"),
+            f.get("vcodec"),
+            f.get("abr")
+        )
 
-    if not audio_formats:
-        # If no dedicated audio format, try any format that has audio (could be combined)
-        # but we'll filter for those that have both audio and video? Not ideal.
-        # Let's fallback to any format with an audio codec (including video+audio).
-        combined = [
-            f for f in formats
-            if f.get("acodec") and f["acodec"] != "none" and f.get("url")
-        ]
-        if not combined:
-            # Last resort: any format with a URL
-            combined = [f for f in formats if f.get("url")]
-        audio_formats = combined
-
-    if not audio_formats:
-        raise ValueError("No audio URL found in any format")
-
-    # Choose the format based on quality request
-    # Quality mapping: we can target bitrate (abr) or filesize
-    # For "low": prefer abr <= 96; "medium": <=128; "high": highest
-    def format_score(f):
-        abr = f.get("abr") or f.get("tbr") or 0
-        if quality == "low":
-            # prefer <=96, else higher but penalize
-            return -abs(abr - 96) if abr <= 96 else -(abr - 96)
-        elif quality == "medium":
-            return -abs(abr - 128) if abr <= 128 else -(abr - 128)
-        else:  # high
-            return abr
-
-    # Sort by score descending (higher is better)
-    audio_formats.sort(key=format_score, reverse=True)
-    best = audio_formats[0]
-
-    audio_url = best.get("url")
-    if not audio_url:
-        raise ValueError("No URL for selected audio format")
-
-    # Determine content type from the format's extension or mime_type
-    ext = best.get("ext") or "webm"
-    content_type_map = {
-        "webm": "audio/webm",
-        "m4a": "audio/mp4",
-        "mp4": "audio/mp4",
-        "opus": "audio/ogg",
-        "ogg": "audio/ogg",
-    }
-    content_type = content_type_map.get(ext, "audio/webm")
-    filesize = best.get("filesize") or best.get("filesize_approx")
-
-    return {
-        "url": audio_url,
-        "content_type": content_type,
-        "filesize": filesize,
-    }
+    return {}
   
 def _format_views(count: int | None) -> str:
     """Format view count to human-readable string."""
