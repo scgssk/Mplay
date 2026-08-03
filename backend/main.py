@@ -34,6 +34,7 @@ LASTFM_API_KEY = os.getenv("LASTFM_API_KEY", "")
 CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))
 MAX_SEARCH_RESULTS = int(os.getenv("MAX_SEARCH_RESULTS", "20"))
 LASTFM_BASE = "https://ws.audioscrobbler.com/2.0/"
+COOKIES_FILE = os.getenv("YOUTUBE_COOKIES_FILE")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mplay")
@@ -80,6 +81,7 @@ def _ytdlp_search(query: str, limit: int) -> list[dict]:
         "skip_download": True,
         "default_search": f"ytsearch{limit}",
         "ignoreerrors": True,
+        "cookiefile": COOKIES_FILE,
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         result = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
@@ -138,6 +140,7 @@ def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
         "format": fmt,
         "skip_download": True,
         "ignoreerrors": False,
+        "cookiefile": COOKIES_FILE,  
     }
 
     url = f"https://www.youtube.com/watch?v={video_id}"
