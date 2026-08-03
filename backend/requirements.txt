@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-yt-dlp>=2023.11.16
+yt-dlp
 httpx==0.25.2
 rapidfuzz==3.5.2
 cachetools==5.3.2
