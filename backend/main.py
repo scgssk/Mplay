@@ -129,11 +129,6 @@ def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
         "quiet": True,
         "skip_download": True,
         "cookiefile": COOKIES_FILE,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android"]
-            }
-        }
     }
 
     url = f"https://www.youtube.com/watch?v={video_id}"
