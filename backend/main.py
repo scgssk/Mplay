@@ -124,73 +124,79 @@ def _ytdlp_search(query: str, limit: int) -> list[dict]:
 
 
 def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
-    """Extract the direct audio URL with fallback if format is unavailable."""
+    """Extract the direct audio URL by manually choosing the best audio format."""
     import yt_dlp
 
-    # Quality-specific format selectors
-    format_map = {
-        "low": "bestaudio[abr<=96]/bestaudio",
-        "medium": "bestaudio[abr<=128]/bestaudio",
-        "high": "bestaudio",
-    }
-    fmt = format_map.get(quality, "bestaudio")
-
+    # We don't use "format" – we'll parse the formats list ourselves.
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
-        "format": fmt,
         "skip_download": True,
         "ignoreerrors": False,
         "cookiefile": COOKIES_FILE,   # from environment
+        # Do NOT set "format"
     }
 
     url = f"https://www.youtube.com/watch?v={video_id}"
 
-    try:
-        # Attempt with the requested format selector
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-    except Exception as e:
-        # If the format isn't available, fall back to generic bestaudio
-        if "Requested format is not available" in str(e):
-            ydl_opts["format"] = "bestaudio"
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-        else:
-            raise
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
 
     if not info:
-        raise ValueError("Could not extract audio info")
+        raise ValueError("Could not extract video info")
 
-    # Attempt to get the direct audio URL
-    audio_url = info.get("url")
-    if not audio_url:
-        # If not present, search through all available formats
-        formats = info.get("requested_formats") or info.get("formats") or []
-        # Keep only audio‑only formats with a URL
-        audio_formats = [
+    # Get all formats; 'requested_formats' may be present, but we want the full list.
+    formats = info.get("formats") or []
+    if not formats:
+        # Sometimes formats are nested under 'requested_formats' when using format selection,
+        # but we didn't use format, so they should be in 'formats'.
+        raise ValueError("No formats found for this video")
+
+    # Filter for audio-only formats (acodec != 'none' and has a URL)
+    audio_formats = [
+        f for f in formats
+        if f.get("acodec") and f["acodec"] != "none" and f.get("url")
+    ]
+
+    if not audio_formats:
+        # If no dedicated audio format, try any format that has audio (could be combined)
+        # but we'll filter for those that have both audio and video? Not ideal.
+        # Let's fallback to any format with an audio codec (including video+audio).
+        combined = [
             f for f in formats
             if f.get("acodec") and f["acodec"] != "none" and f.get("url")
         ]
-        if audio_formats:
-            # Choose the one with highest bitrate (abr or tbr)
-            audio_formats.sort(
-                key=lambda f: (f.get("abr") or f.get("tbr") or 0),
-                reverse=True
-            )
-            audio_url = audio_formats[0]["url"]
-        else:
+        if not combined:
             # Last resort: any format with a URL
-            for f in formats:
-                if f.get("url"):
-                    audio_url = f["url"]
-                    break
+            combined = [f for f in formats if f.get("url")]
+        audio_formats = combined
 
+    if not audio_formats:
+        raise ValueError("No audio URL found in any format")
+
+    # Choose the format based on quality request
+    # Quality mapping: we can target bitrate (abr) or filesize
+    # For "low": prefer abr <= 96; "medium": <=128; "high": highest
+    def format_score(f):
+        abr = f.get("abr") or f.get("tbr") or 0
+        if quality == "low":
+            # prefer <=96, else higher but penalize
+            return -abs(abr - 96) if abr <= 96 else -(abr - 96)
+        elif quality == "medium":
+            return -abs(abr - 128) if abr <= 128 else -(abr - 128)
+        else:  # high
+            return abr
+
+    # Sort by score descending (higher is better)
+    audio_formats.sort(key=format_score, reverse=True)
+    best = audio_formats[0]
+
+    audio_url = best.get("url")
     if not audio_url:
-        raise ValueError("No audio URL found")
+        raise ValueError("No URL for selected audio format")
 
-    # Determine content type from file extension
-    ext = info.get("ext", "webm")
+    # Determine content type from the format's extension or mime_type
+    ext = best.get("ext") or "webm"
     content_type_map = {
         "webm": "audio/webm",
         "m4a": "audio/mp4",
@@ -199,7 +205,7 @@ def _ytdlp_extract_audio(video_id: str, quality: str) -> dict:
         "ogg": "audio/ogg",
     }
     content_type = content_type_map.get(ext, "audio/webm")
-    filesize = info.get("filesize") or info.get("filesize_approx")
+    filesize = best.get("filesize") or best.get("filesize_approx")
 
     return {
         "url": audio_url,
